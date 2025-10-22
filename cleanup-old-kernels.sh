@@ -96,33 +96,33 @@ perform_cleanup() {
     }
 
     # --- Determine removable packages ---
-    to_remove_images=""
-    to_remove_headers=""
-    to_remove_modules=""
-    to_remove_tools=""
+    old_images=""
+    old_headers=""
+    old_modules=""
+    old_tools=""
 
     for pkg in $all_versioned_pkgs; do
         ver=$(get_base_version "$pkg")
         [ -n "$ver" ] || continue
         is_protected "$ver" && continue
         case "$pkg" in
-            linux-image-*)   to_remove_images="$to_remove_images $pkg" ;;
-            linux-headers-*) to_remove_headers="$to_remove_headers $pkg" ;;
-            linux-modules-*) to_remove_modules="$to_remove_modules $pkg" ;;
-            linux-tools-*)   to_remove_tools="$to_remove_tools $pkg" ;;
+            linux-image-*)   old_images="$old_images $pkg" ;;
+            linux-headers-*) old_headers="$old_headers $pkg" ;;
+            linux-modules-*) old_modules="$old_modules $pkg" ;;
+            linux-tools-*)   old_tools="$old_tools $pkg" ;;
         esac
     done
 
     # --- Show removal plan ---
-    if [ -z "$to_remove_images" ] && [ -z "$to_remove_headers" ] && \
-       [ -z "$to_remove_modules" ] && [ -z "$to_remove_tools" ]; then
+    if [ -z "$old_images" ] && [ -z "$old_headers" ] && \
+       [ -z "$old_modules" ] && [ -z "$old_tools" ]; then
         echo "No old kernel packages to remove."
         nothing_to_remove=1
     else
         nothing_to_remove=0
         echo ""
         echo "The following old kernel packages will be removed:"
-        for pkg in $to_remove_images $to_remove_headers $to_remove_modules $to_remove_tools; do
+        for pkg in $old_images $old_headers $old_modules $old_tools; do
             echo "  $pkg"
         done
     fi
@@ -150,7 +150,7 @@ perform_cleanup() {
         echo ""
         echo "Running apt-get purge..."
         # shellcheck disable=SC2086
-        apt-get $apt_args purge $to_remove_images $to_remove_headers $to_remove_modules $to_remove_tools
+        apt-get $apt_args purge $old_images $old_headers $old_modules $old_tools
     fi
 
     # --- Remove leftover orphaned directories ---
