@@ -3,6 +3,8 @@
 # cleanup-old-kernels.sh - Purge old kernel packages and orphaned directories
 # POSIX-compliant, Debian-family (Ubuntu/Mint) safe
 #
+# Reports reclaimed disk space after cleanup.
+#
 # What is removed:
 #   - Old linux-image, linux-headers, linux-modules, and linux-tools packages
 #     * Protects current running kernel and newest installed kernel versions
@@ -14,7 +16,6 @@
 #   - Newest installed kernel
 #   - Any packages or directories not matching kernel version patterns
 
-# shellcheck disable=SC3040,SC3043,SC3050
 set -eu
 
 show_usage() {
@@ -59,15 +60,28 @@ done
 command -v dpkg >/dev/null 2>&1 || { echo "dpkg required" >&2; exit 1; }
 command -v apt-get >/dev/null 2>&1 || { echo "apt-get required" >&2; exit 1; }
 
-# --- Helper to extract base version ---
+# --- Helpers ---
+
 get_base_version() {
     # Extract the base version (e.g., 6.1.0-18) from a full kernel version or package name
     printf "%s\n" "$1" | sed -nE 's/.*([0-9]+\.[0-9]+\.[0-9]+-[0-9]+).*/\1/p'
 }
 
+get_root_used_kb() {
+    # Returns used kilobytes on root filesystem
+    df -kP / | awk 'NR==2 {print $3}'
+}
+
+human_mb() {
+    # Convert KB to MB (rounded)
+    awk "BEGIN {printf \"%.1f\", $1 / 1024}"
+}
+
 # --- Wrapper function ---
 perform_cleanup() {
     _dry_run=$1
+
+    start_kb=$(get_root_used_kb)
 
     current_kernel=$(uname -r)
 
@@ -88,7 +102,6 @@ perform_cleanup() {
 
     is_protected() {
         ver="$1"
-        # POSIX-safe matching
         case " $protected_versions " in
             *" $ver "*) return 0 ;;
             *) return 1 ;;
@@ -156,6 +169,7 @@ perform_cleanup() {
     # --- Remove leftover orphaned directories ---
     echo ""
     echo "Checking for orphaned kernel directories..."
+    orphaned_removed=0
     cleanup_kernel_dirs() {
         base_dir="$1"
         [ -d "$base_dir" ] || return 0
@@ -164,14 +178,14 @@ perform_cleanup() {
             dir_name=$(basename "$dir")
             ver=$(get_base_version "$dir_name")
             [ -n "$ver" ] || continue
-            # Only remove directories starting with 'linux-'
             case "$dir_name" in
-                linux-*) ;;
+                linux-*) ;;   # Only linux-* dirs
                 *) continue ;;
             esac
             is_protected "$ver" && continue
             echo "  Removing orphaned: $dir"
             rm -rf "$dir" || true
+            orphaned_removed=1
         done
     }
 
@@ -179,8 +193,26 @@ perform_cleanup() {
         cleanup_kernel_dirs "$d"
     done
 
+    # --- Measure reclaimed disk space ---
+    end_kb=$(get_root_used_kb)
+    diff_kb=$((start_kb - end_kb))
+    if [ "$diff_kb" -gt 0 ]; then
+        diff_mb=$(human_mb "$diff_kb")
+        echo ""
+        echo "Disk space reclaimed: ${diff_mb} MB"
+    else
+        echo ""
+        echo "No significant disk space reclaimed."
+    fi
+
+    # --- Optional grub notice ---
+    if [ "$orphaned_removed" -eq 1 ]; then
+        echo ""
+        echo "You may want to run 'update-grub' to update the bootloader menu."
+    fi
+
     echo ""
-    echo "Cleanup complete. You may want to run 'update-grub' to update the bootloader menu."
+    echo "Cleanup complete."
 }
 
 # --- Execution ---
